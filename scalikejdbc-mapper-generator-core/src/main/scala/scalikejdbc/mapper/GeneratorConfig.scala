@@ -15,6 +15,7 @@ case class GeneratorConfig(
   dateTimeClass: DateTimeClass = DateTimeClass.ZonedDateTime,
   tableNameToClassName: String => String = GeneratorConfig.toCamelCase,
   columnNameToFieldName: String => String = GeneratorConfig.columnNameToFieldNameBasic andThen GeneratorConfig.addSuffixIfConflict("Column"),
+  columnTypeToFieldType: PartialFunction[Int, String] = GeneratorConfig.columnTypeToFieldTypeBasic andThen GeneratorConfig.addSuffixIfConflict("Column"),
   returnCollectionType: ReturnCollectionType = ReturnCollectionType.List,
   view: Boolean = false,
   tableNamesToSkip: collection.Seq[String] = Nil,
@@ -69,6 +70,8 @@ object GeneratorConfig {
   val columnNameToFieldNameBasic: String => String = {
     GeneratorConfig.lowerCamelCase andThen GeneratorConfig.quoteReservedWord
   }
+
+  val columnTypeToFieldTypeBasic: PartialFunction[Int, String] = ???
 
   private val tableNameToSyntaxNameDefault: String => String = { tableName =>
     val name = "[A-Z]".r.findAllIn(toCamelCase(tableName)).mkString.toLowerCase(ENGLISH)

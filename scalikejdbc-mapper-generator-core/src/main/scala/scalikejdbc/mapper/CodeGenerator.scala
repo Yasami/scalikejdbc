@@ -1,7 +1,12 @@
 package scalikejdbc.mapper
 
+import java.sql.JDBCType
+
 import scalikejdbc._
+
+import scala.PartialFunction
 import scala.language.implicitConversions
+import scala.util.Try
 
 /**
  * Active Record like template generator
@@ -51,41 +56,45 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
 
     lazy val nameInScala: String = config.columnNameToFieldName(underlying.name)
 
-    lazy val rawTypeInScala: String = underlying.dataType match {
-      case JavaSqlTypes.ARRAY => TypeName.AnyArray
-      case JavaSqlTypes.BIGINT => TypeName.Long
-      case JavaSqlTypes.BINARY => TypeName.ByteArray
-      case JavaSqlTypes.BIT => TypeName.Boolean
-      case JavaSqlTypes.BLOB => TypeName.Blob
-      case JavaSqlTypes.BOOLEAN => TypeName.Boolean
-      case JavaSqlTypes.CHAR => TypeName.String
-      case JavaSqlTypes.CLOB => TypeName.Clob
-      case JavaSqlTypes.DATALINK => TypeName.Any
-      case JavaSqlTypes.DATE => TypeName.LocalDate
-      case JavaSqlTypes.DECIMAL => TypeName.BigDecimal
-      case JavaSqlTypes.DISTINCT => TypeName.Any
-      case JavaSqlTypes.DOUBLE => TypeName.Double
-      case JavaSqlTypes.FLOAT => TypeName.Float
-      case JavaSqlTypes.INTEGER => TypeName.Int
-      case JavaSqlTypes.JAVA_OBJECT => TypeName.Any
-      case JavaSqlTypes.LONGVARBINARY => TypeName.ByteArray
-      case JavaSqlTypes.LONGVARCHAR => TypeName.String
-      case JavaSqlTypes.NULL => TypeName.Any
-      case JavaSqlTypes.NUMERIC => TypeName.BigDecimal
-      case JavaSqlTypes.OTHER => TypeName.Any
-      case JavaSqlTypes.REAL => TypeName.Float
-      case JavaSqlTypes.REF => TypeName.Ref
-      case JavaSqlTypes.SMALLINT => TypeName.Short
-      case JavaSqlTypes.STRUCT => TypeName.Struct
-      case JavaSqlTypes.TIME => TypeName.LocalTime
-      case JavaSqlTypes.TIMESTAMP => config.dateTimeClass.simpleName
-      case JavaSqlTypes.TINYINT => TypeName.Byte
-      case JavaSqlTypes.VARBINARY => TypeName.ByteArray
-      case JavaSqlTypes.VARCHAR => TypeName.String
-      case JavaSqlTypes.NVARCHAR => TypeName.String
-      case JavaSqlTypes.NCHAR => TypeName.String
-      case JavaSqlTypes.LONGNVARCHAR => TypeName.String
-      case _ => TypeName.Any
+    lazy val rawTypeInScala: String = {
+      config.columnTypeToFieldType.applyOrElse(
+        underlying.dataType,
+        (dataType: Int) => JDBCType.valueOf(dataType) match {
+          case JavaSqlTypes.ARRAY => TypeName.AnyArray
+          case JavaSqlTypes.BIGINT => TypeName.Long
+          case JavaSqlTypes.BINARY => TypeName.ByteArray
+          case JavaSqlTypes.BIT => TypeName.Boolean
+          case JavaSqlTypes.BLOB => TypeName.Blob
+          case JavaSqlTypes.BOOLEAN => TypeName.Boolean
+          case JavaSqlTypes.CHAR => TypeName.String
+          case JavaSqlTypes.CLOB => TypeName.Clob
+          case JavaSqlTypes.DATALINK => TypeName.Any
+          case JavaSqlTypes.DATE => TypeName.LocalDate
+          case JavaSqlTypes.DECIMAL => TypeName.BigDecimal
+          case JavaSqlTypes.DISTINCT => TypeName.Any
+          case JavaSqlTypes.DOUBLE => TypeName.Double
+          case JavaSqlTypes.FLOAT => TypeName.Float
+          case JavaSqlTypes.INTEGER => TypeName.Int
+          case JavaSqlTypes.JAVA_OBJECT => TypeName.Any
+          case JavaSqlTypes.LONGVARBINARY => TypeName.ByteArray
+          case JavaSqlTypes.LONGVARCHAR => TypeName.String
+          case JavaSqlTypes.NULL => TypeName.Any
+          case JavaSqlTypes.NUMERIC => TypeName.BigDecimal
+          case JavaSqlTypes.OTHER => TypeName.Any
+          case JavaSqlTypes.REAL => TypeName.Float
+          case JavaSqlTypes.REF => TypeName.Ref
+          case JavaSqlTypes.SMALLINT => TypeName.Short
+          case JavaSqlTypes.STRUCT => TypeName.Struct
+          case JavaSqlTypes.TIME => TypeName.LocalTime
+          case JavaSqlTypes.TIMESTAMP => config.dateTimeClass.simpleName
+          case JavaSqlTypes.TINYINT => TypeName.Byte
+          case JavaSqlTypes.VARBINARY => TypeName.ByteArray
+          case JavaSqlTypes.VARCHAR => TypeName.String
+          case JavaSqlTypes.NVARCHAR => TypeName.String
+          case JavaSqlTypes.NCHAR => TypeName.String
+          case JavaSqlTypes.LONGNVARCHAR => TypeName.String
+          case _ => TypeName.Any
+        })
     }
 
     lazy val typeInScala: String = {
@@ -93,42 +102,42 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
       else "Option[" + rawTypeInScala + "]"
     }
 
-    lazy val dummyValue: String = underlying.dataType match {
-      case JavaSqlTypes.ARRAY => "null"
-      case JavaSqlTypes.BIGINT => "1"
-      case JavaSqlTypes.BINARY => "1"
-      case JavaSqlTypes.BIT => "false"
-      case JavaSqlTypes.BLOB => "null"
-      case JavaSqlTypes.BOOLEAN => "true"
-      case JavaSqlTypes.CHAR => "'abc'"
-      case JavaSqlTypes.CLOB => "null"
-      case JavaSqlTypes.DATALINK => "null"
-      case JavaSqlTypes.DATE => "'1958-09-06'"
-      case JavaSqlTypes.DECIMAL => "1"
-      case JavaSqlTypes.DISTINCT => "null"
-      case JavaSqlTypes.DOUBLE => "0.1"
-      case JavaSqlTypes.FLOAT => "0.1"
-      case JavaSqlTypes.INTEGER => "1"
-      case JavaSqlTypes.JAVA_OBJECT => "null"
-      case JavaSqlTypes.LONGVARBINARY => "null"
-      case JavaSqlTypes.LONGVARCHAR => "'abc'"
-      case JavaSqlTypes.NULL => "null"
-      case JavaSqlTypes.NUMERIC => "1"
-      case JavaSqlTypes.OTHER => "null"
-      case JavaSqlTypes.REAL => "null"
-      case JavaSqlTypes.REF => "null"
-      case JavaSqlTypes.SMALLINT => "1"
-      case JavaSqlTypes.STRUCT => "null"
-      case JavaSqlTypes.TIME => "'12:00:00'"
-      case JavaSqlTypes.TIMESTAMP => "'1958-09-06 12:00:00'"
-      case JavaSqlTypes.TINYINT => "1"
-      case JavaSqlTypes.VARBINARY => "null"
-      case JavaSqlTypes.VARCHAR => "'abc'"
-      case JavaSqlTypes.NVARCHAR => "'abc'"
-      case JavaSqlTypes.NCHAR => "'abc'"
-      case JavaSqlTypes.LONGNVARCHAR => "'abc'"
-      case _ => "null"
-    }
+    //    lazy val dummyValue: String = underlying.dataType match {
+    //      case JavaSqlTypes.ARRAY => "null"
+    //      case JavaSqlTypes.BIGINT => "1"
+    //      case JavaSqlTypes.BINARY => "1"
+    //      case JavaSqlTypes.BIT => "false"
+    //      case JavaSqlTypes.BLOB => "null"
+    //      case JavaSqlTypes.BOOLEAN => "true"
+    //      case JavaSqlTypes.CHAR => "'abc'"
+    //      case JavaSqlTypes.CLOB => "null"
+    //      case JavaSqlTypes.DATALINK => "null"
+    //      case JavaSqlTypes.DATE => "'1958-09-06'"
+    //      case JavaSqlTypes.DECIMAL => "1"
+    //      case JavaSqlTypes.DISTINCT => "null"
+    //      case JavaSqlTypes.DOUBLE => "0.1"
+    //      case JavaSqlTypes.FLOAT => "0.1"
+    //      case JavaSqlTypes.INTEGER => "1"
+    //      case JavaSqlTypes.JAVA_OBJECT => "null"
+    //      case JavaSqlTypes.LONGVARBINARY => "null"
+    //      case JavaSqlTypes.LONGVARCHAR => "'abc'"
+    //      case JavaSqlTypes.NULL => "null"
+    //      case JavaSqlTypes.NUMERIC => "1"
+    //      case JavaSqlTypes.OTHER => "null"
+    //      case JavaSqlTypes.REAL => "null"
+    //      case JavaSqlTypes.REF => "null"
+    //      case JavaSqlTypes.SMALLINT => "1"
+    //      case JavaSqlTypes.STRUCT => "null"
+    //      case JavaSqlTypes.TIME => "'12:00:00'"
+    //      case JavaSqlTypes.TIMESTAMP => "'1958-09-06 12:00:00'"
+    //      case JavaSqlTypes.TINYINT => "1"
+    //      case JavaSqlTypes.VARBINARY => "null"
+    //      case JavaSqlTypes.VARCHAR => "'abc'"
+    //      case JavaSqlTypes.NVARCHAR => "'abc'"
+    //      case JavaSqlTypes.NCHAR => "'abc'"
+    //      case JavaSqlTypes.LONGNVARCHAR => "'abc'"
+    //      case _ => "null"
+    //    }
 
     lazy val defaultValueInScala: String = underlying.typeInScala match {
       case TypeName.AnyArray => "Array[Any]()"

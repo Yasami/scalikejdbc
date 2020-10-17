@@ -19,7 +19,7 @@ case class Model(url: String, username: String, password: String) extends AutoCl
 
   private def columnName(implicit rs: WrappedResultSet): String = rs.string("COLUMN_NAME")
 
-  private def columnDataType(implicit rs: WrappedResultSet): JDBCType = JDBCType.valueOf(rs.string("DATA_TYPE").toInt)
+  private def columnDataType(implicit rs: WrappedResultSet): Int = rs.string("DATA_TYPE").toInt
 
   private def isNotNull(implicit rs: WrappedResultSet): Boolean = {
     val isNullable = rs.string("IS_NULLABLE")

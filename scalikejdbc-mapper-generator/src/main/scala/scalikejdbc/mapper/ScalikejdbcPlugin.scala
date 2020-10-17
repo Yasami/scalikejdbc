@@ -37,6 +37,7 @@ object ScalikejdbcPlugin extends AutoPlugin {
       dateTimeClass: DateTimeClass,
       tableNameToClassName: String => String,
       columnNameToFieldName: String => String,
+      columnTypeToFieldType: PartialFunction[Int, String],
       returnCollectionType: ReturnCollectionType,
       view: Boolean,
       tableNamesToSkip: collection.Seq[String],
@@ -122,6 +123,7 @@ object ScalikejdbcPlugin extends AutoPlugin {
       }.getOrElse(defaultConfig.dateTimeClass),
       defaultConfig.tableNameToClassName,
       defaultConfig.columnNameToFieldName,
+      defaultConfig.columnTypeToFieldType,
       returnCollectionType = getString(props, RETURN_COLLECTION_TYPE).map { name =>
         ReturnCollectionType.map.getOrElse(
           name.toLowerCase(en),
@@ -173,6 +175,7 @@ object ScalikejdbcPlugin extends AutoPlugin {
       dateTimeClass = generatorSettings.dateTimeClass,
       tableNameToClassName = generatorSettings.tableNameToClassName,
       columnNameToFieldName = generatorSettings.columnNameToFieldName,
+      columnTypeToFieldType = generatorSettings.columnTypeToFieldType,
       returnCollectionType = generatorSettings.returnCollectionType,
       view = generatorSettings.view,
       tableNamesToSkip = generatorSettings.tableNamesToSkip,
