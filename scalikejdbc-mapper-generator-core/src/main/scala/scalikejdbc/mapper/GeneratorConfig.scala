@@ -15,14 +15,18 @@ case class GeneratorConfig(
   dateTimeClass: DateTimeClass = DateTimeClass.ZonedDateTime,
   tableNameToClassName: String => String = GeneratorConfig.toCamelCase,
   columnNameToFieldName: String => String = GeneratorConfig.columnNameToFieldNameBasic andThen GeneratorConfig.addSuffixIfConflict("Column"),
-  columnTypeToFieldType: PartialFunction[Int, String] = GeneratorConfig.columnTypeToFieldTypeBasic andThen GeneratorConfig.addSuffixIfConflict("Column"),
+  columnNameToFieldType: PartialFunction[(String, String), String] = PartialFunction.empty,
+  columnTypeToFieldType: PartialFunction[Int, String] = PartialFunction.empty,
+  fieldTypeToDefaultValue: PartialFunction[String, String] = PartialFunction.empty,
   returnCollectionType: ReturnCollectionType = ReturnCollectionType.List,
   view: Boolean = false,
   tableNamesToSkip: collection.Seq[String] = Nil,
   tableNameToBaseTypes: String => Seq[String] = _ => Nil,
   tableNameToCompanionBaseTypes: String => Seq[String] = _ => Nil,
+  tableNameToSpecBaseTypes: String => Seq[String] = _ => Nil,
   tableNameToSyntaxName: String => String = GeneratorConfig.tableNameToSyntaxNameDefault,
-  tableNameToSyntaxVariableName: String => String = GeneratorConfig.tableNameToSyntaxNameDefault)
+  tableNameToSyntaxVariableName: String => String = GeneratorConfig.tableNameToSyntaxNameDefault,
+  abstractSpec: Boolean = false)
 
 object GeneratorConfig {
   private def toProperCase(s: String): String = {
@@ -70,8 +74,6 @@ object GeneratorConfig {
   val columnNameToFieldNameBasic: String => String = {
     GeneratorConfig.lowerCamelCase andThen GeneratorConfig.quoteReservedWord
   }
-
-  val columnTypeToFieldTypeBasic: PartialFunction[Int, String] = ???
 
   private val tableNameToSyntaxNameDefault: String => String = { tableName =>
     val name = "[A-Z]".r.findAllIn(toCamelCase(tableName)).mkString.toLowerCase(ENGLISH)

@@ -1,21 +1,19 @@
 package scalikejdbc.mapper
 
 import java.sql.JDBCType
+import java.util.Locale.ENGLISH
 
 import scalikejdbc._
 
-import scala.PartialFunction
 import scala.language.implicitConversions
-import scala.util.Try
-
 /**
  * Active Record like template generator
  */
 class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(implicit config: GeneratorConfig = GeneratorConfig())
   extends Generator with LoanPattern {
 
+  import java.io.{ File, FileOutputStream, OutputStreamWriter }
   import java.sql.{ JDBCType => JavaSqlTypes }
-  import java.io.{ OutputStreamWriter, FileOutputStream, File }
 
   private val packageName = config.packageName
   private val className = specifiedClassName.getOrElse(config.tableNameToClassName(table.name))
@@ -57,44 +55,46 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
     lazy val nameInScala: String = config.columnNameToFieldName(underlying.name)
 
     lazy val rawTypeInScala: String = {
-      config.columnTypeToFieldType.applyOrElse(
-        underlying.dataType,
-        (dataType: Int) => JDBCType.valueOf(dataType) match {
-          case JavaSqlTypes.ARRAY => TypeName.AnyArray
-          case JavaSqlTypes.BIGINT => TypeName.Long
-          case JavaSqlTypes.BINARY => TypeName.ByteArray
-          case JavaSqlTypes.BIT => TypeName.Boolean
-          case JavaSqlTypes.BLOB => TypeName.Blob
-          case JavaSqlTypes.BOOLEAN => TypeName.Boolean
-          case JavaSqlTypes.CHAR => TypeName.String
-          case JavaSqlTypes.CLOB => TypeName.Clob
-          case JavaSqlTypes.DATALINK => TypeName.Any
-          case JavaSqlTypes.DATE => TypeName.LocalDate
-          case JavaSqlTypes.DECIMAL => TypeName.BigDecimal
-          case JavaSqlTypes.DISTINCT => TypeName.Any
-          case JavaSqlTypes.DOUBLE => TypeName.Double
-          case JavaSqlTypes.FLOAT => TypeName.Float
-          case JavaSqlTypes.INTEGER => TypeName.Int
-          case JavaSqlTypes.JAVA_OBJECT => TypeName.Any
-          case JavaSqlTypes.LONGVARBINARY => TypeName.ByteArray
-          case JavaSqlTypes.LONGVARCHAR => TypeName.String
-          case JavaSqlTypes.NULL => TypeName.Any
-          case JavaSqlTypes.NUMERIC => TypeName.BigDecimal
-          case JavaSqlTypes.OTHER => TypeName.Any
-          case JavaSqlTypes.REAL => TypeName.Float
-          case JavaSqlTypes.REF => TypeName.Ref
-          case JavaSqlTypes.SMALLINT => TypeName.Short
-          case JavaSqlTypes.STRUCT => TypeName.Struct
-          case JavaSqlTypes.TIME => TypeName.LocalTime
-          case JavaSqlTypes.TIMESTAMP => config.dateTimeClass.simpleName
-          case JavaSqlTypes.TINYINT => TypeName.Byte
-          case JavaSqlTypes.VARBINARY => TypeName.ByteArray
-          case JavaSqlTypes.VARCHAR => TypeName.String
-          case JavaSqlTypes.NVARCHAR => TypeName.String
-          case JavaSqlTypes.NCHAR => TypeName.String
-          case JavaSqlTypes.LONGNVARCHAR => TypeName.String
-          case _ => TypeName.Any
-        })
+      config.columnNameToFieldType.lift((className, nameInScala)).getOrElse {
+        config.columnTypeToFieldType.applyOrElse(
+          underlying.dataType,
+          (dataType: Int) => JDBCType.valueOf(dataType) match {
+            case JavaSqlTypes.ARRAY => TypeName.AnyArray
+            case JavaSqlTypes.BIGINT => TypeName.Long
+            case JavaSqlTypes.BINARY => TypeName.ByteArray
+            case JavaSqlTypes.BIT => TypeName.Boolean
+            case JavaSqlTypes.BLOB => TypeName.Blob
+            case JavaSqlTypes.BOOLEAN => TypeName.Boolean
+            case JavaSqlTypes.CHAR => TypeName.String
+            case JavaSqlTypes.CLOB => TypeName.Clob
+            case JavaSqlTypes.DATALINK => TypeName.Any
+            case JavaSqlTypes.DATE => TypeName.LocalDate
+            case JavaSqlTypes.DECIMAL => TypeName.BigDecimal
+            case JavaSqlTypes.DISTINCT => TypeName.Any
+            case JavaSqlTypes.DOUBLE => TypeName.Double
+            case JavaSqlTypes.FLOAT => TypeName.Float
+            case JavaSqlTypes.INTEGER => TypeName.Int
+            case JavaSqlTypes.JAVA_OBJECT => TypeName.Any
+            case JavaSqlTypes.LONGVARBINARY => TypeName.ByteArray
+            case JavaSqlTypes.LONGVARCHAR => TypeName.String
+            case JavaSqlTypes.NULL => TypeName.Any
+            case JavaSqlTypes.NUMERIC => TypeName.BigDecimal
+            case JavaSqlTypes.OTHER => TypeName.Any
+            case JavaSqlTypes.REAL => TypeName.Float
+            case JavaSqlTypes.REF => TypeName.Ref
+            case JavaSqlTypes.SMALLINT => TypeName.Short
+            case JavaSqlTypes.STRUCT => TypeName.Struct
+            case JavaSqlTypes.TIME => TypeName.LocalTime
+            case JavaSqlTypes.TIMESTAMP => config.dateTimeClass.simpleName
+            case JavaSqlTypes.TINYINT => TypeName.Byte
+            case JavaSqlTypes.VARBINARY => TypeName.ByteArray
+            case JavaSqlTypes.VARCHAR => TypeName.String
+            case JavaSqlTypes.NVARCHAR => TypeName.String
+            case JavaSqlTypes.NCHAR => TypeName.String
+            case JavaSqlTypes.LONGNVARCHAR => TypeName.String
+            case _ => TypeName.Any
+          })
+      }
     }
 
     lazy val typeInScala: String = {
@@ -102,59 +102,25 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
       else "Option[" + rawTypeInScala + "]"
     }
 
-    //    lazy val dummyValue: String = underlying.dataType match {
-    //      case JavaSqlTypes.ARRAY => "null"
-    //      case JavaSqlTypes.BIGINT => "1"
-    //      case JavaSqlTypes.BINARY => "1"
-    //      case JavaSqlTypes.BIT => "false"
-    //      case JavaSqlTypes.BLOB => "null"
-    //      case JavaSqlTypes.BOOLEAN => "true"
-    //      case JavaSqlTypes.CHAR => "'abc'"
-    //      case JavaSqlTypes.CLOB => "null"
-    //      case JavaSqlTypes.DATALINK => "null"
-    //      case JavaSqlTypes.DATE => "'1958-09-06'"
-    //      case JavaSqlTypes.DECIMAL => "1"
-    //      case JavaSqlTypes.DISTINCT => "null"
-    //      case JavaSqlTypes.DOUBLE => "0.1"
-    //      case JavaSqlTypes.FLOAT => "0.1"
-    //      case JavaSqlTypes.INTEGER => "1"
-    //      case JavaSqlTypes.JAVA_OBJECT => "null"
-    //      case JavaSqlTypes.LONGVARBINARY => "null"
-    //      case JavaSqlTypes.LONGVARCHAR => "'abc'"
-    //      case JavaSqlTypes.NULL => "null"
-    //      case JavaSqlTypes.NUMERIC => "1"
-    //      case JavaSqlTypes.OTHER => "null"
-    //      case JavaSqlTypes.REAL => "null"
-    //      case JavaSqlTypes.REF => "null"
-    //      case JavaSqlTypes.SMALLINT => "1"
-    //      case JavaSqlTypes.STRUCT => "null"
-    //      case JavaSqlTypes.TIME => "'12:00:00'"
-    //      case JavaSqlTypes.TIMESTAMP => "'1958-09-06 12:00:00'"
-    //      case JavaSqlTypes.TINYINT => "1"
-    //      case JavaSqlTypes.VARBINARY => "null"
-    //      case JavaSqlTypes.VARCHAR => "'abc'"
-    //      case JavaSqlTypes.NVARCHAR => "'abc'"
-    //      case JavaSqlTypes.NCHAR => "'abc'"
-    //      case JavaSqlTypes.LONGNVARCHAR => "'abc'"
-    //      case _ => "null"
-    //    }
-
-    lazy val defaultValueInScala: String = underlying.typeInScala match {
-      case TypeName.AnyArray => "Array[Any]()"
-      case TypeName.Long => "1L"
-      case TypeName.ByteArray => "Array[Byte]()"
-      case TypeName.Boolean => "false"
-      case TypeName.String => "\"MyString\""
-      case TypeName.LocalDate => "LocalDate.now"
-      case TypeName.BigDecimal => "new java.math.BigDecimal(\"1\")"
-      case TypeName.Double => "0.1D"
-      case TypeName.Float => "0.1F"
-      case TypeName.Int => "123"
-      case TypeName.Short => "123"
-      case TypeName.DateTime => "DateTime.now"
-      case TypeName.Byte => "1"
-      case _ => "null"
-    }
+    lazy val defaultValueInScala: String =
+      config.fieldTypeToDefaultValue.lift(underlying.typeInScala).getOrElse {
+        underlying.typeInScala match {
+          case TypeName.AnyArray => "Array[Any]()"
+          case TypeName.Long => "1L"
+          case TypeName.ByteArray => "Array[Byte]()"
+          case TypeName.Boolean => "false"
+          case TypeName.String => "\"MyString\""
+          case TypeName.LocalDate => "LocalDate.now"
+          case TypeName.BigDecimal => "new java.math.BigDecimal(\"1\")"
+          case TypeName.Double => "0.1D"
+          case TypeName.Float => "0.1F"
+          case TypeName.Int => "123"
+          case TypeName.Short => "123"
+          case TypeName.DateTime => "DateTime.now"
+          case TypeName.Byte => "1"
+          case _ => "null"
+        }
+      }
 
     private[CodeGenerator] def isAny: Boolean = rawTypeInScala == TypeName.Any
   }
@@ -694,7 +660,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
 
     val isQueryDsl = config.template == GeneratorTemplate.queryDsl
     val baseTypes = {
-      val types = config.tableNameToCompanionBaseTypes(table.name)
+      val types = config.tableNameToCompanionBaseTypes(table.name).map(_.replace("$className", className))
       if (types.isEmpty) ""
       else types.mkString("with ", " with ", " ")
     }
@@ -817,216 +783,218 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
     }
   }
 
-  def specAll(): Option[String] = config.testTemplate match {
-    case GeneratorTestTemplate.ScalaTestFlatSpec =>
-      Some(replaceVariablesForTestPart(
-        s"""package %package%
-          |
-          |import org.scalatest.flatspec.FixtureAnyFlatSpec
-          |import org.scalatest.matchers.should.Matchers
-          |import scalikejdbc.scalatest.AutoRollback
-          |import scalikejdbc._
-          |$timeImport
-          |
-          |class %className%Spec extends FixtureAnyFlatSpec with Matchers with AutoRollback {
-          |  %syntaxObject%
-          |
-          |  behavior of "%className%"
-          |
-          |  it should "find by primary keys" in { implicit session =>
-          |    val maybeFound = %className%.find(%primaryKeys%)
-          |    maybeFound.isDefined should be(true)
-          |  }
-          |  it should "find by where clauses" in { implicit session =>
-          |    val maybeFound = %className%.findBy(%whereExample%)
-          |    maybeFound.isDefined should be(true)
-          |  }
-          |  it should "find all records" in { implicit session =>
-          |    val allResults = %className%.findAll()
-          |    allResults.size should be >(0)
-          |  }
-          |  it should "count all records" in { implicit session =>
-          |    val count = %className%.countAll()
-          |    count should be >(0L)
-          |  }
-          |  it should "find all by where clauses" in { implicit session =>
-          |    val results = %className%.findAllBy(%whereExample%)
-          |    results.size should be >(0)
-          |  }
-          |  it should "count by where clauses" in { implicit session =>
-          |    val count = %className%.countBy(%whereExample%)
-          |    count should be >(0L)
-          |  }
-          |  it should "create new record" in { implicit session =>
-          |    val created = %className%.create(%createFields%)
-          |    created should not be(null)
-          |  }
-          |  it should "save a record" in { implicit session =>
-          |    val entity = %className%.findAll().head
-          |    // TODO modify something
-          |    val modified = entity
-          |    val updated = %className%.save(modified)
-          |    updated should not equal(entity)
-          |  }
-          |  it should "destroy a record" in { implicit session =>
-          |    val entity = %className%.findAll().head
-          |    val deleted = %className%.destroy(entity)
-          |    deleted should be(1)
-          |    val shouldBeNone = %className%.find(%primaryKeys%)
-          |    shouldBeNone.isDefined should be(false)
-          |  }
-          |  it should "perform batch insert" in { implicit session =>
-          |    val entities = %className%.findAll()
-          |    entities.foreach(e => %className%.destroy(e))
-          |    val batchInserted = %className%.batchInsert(entities)
-          |    batchInserted.size should be >(0)
-          |  }
-          |}""".stripMargin + eol))
-    case GeneratorTestTemplate.specs2unit =>
-      Some(replaceVariablesForTestPart(
-        s"""package %package%
-          |
-          |import scalikejdbc.specs2.mutable.AutoRollback
-          |import org.specs2.mutable._
-          |import scalikejdbc._
-          |$timeImport
-          |
-          |class %className%Spec extends Specification {
-          |
-          |  "%className%" should {
-          |
-          |    %syntaxObject%
-          |
-          |    "find by primary keys" in new AutoRollback {
-          |      val maybeFound = %className%.find(%primaryKeys%)
-          |      maybeFound.isDefined should beTrue
-          |    }
-          |    "find by where clauses" in new AutoRollback {
-          |      val maybeFound = %className%.findBy(%whereExample%)
-          |      maybeFound.isDefined should beTrue
-          |    }
-          |    "find all records" in new AutoRollback {
-          |      val allResults = %className%.findAll()
-          |      allResults.size should be_>(0)
-          |    }
-          |    "count all records" in new AutoRollback {
-          |      val count = %className%.countAll()
-          |      count should be_>(0L)
-          |    }
-          |    "find all by where clauses" in new AutoRollback {
-          |      val results = %className%.findAllBy(%whereExample%)
-          |      results.size should be_>(0)
-          |    }
-          |    "count by where clauses" in new AutoRollback {
-          |      val count = %className%.countBy(%whereExample%)
-          |      count should be_>(0L)
-          |    }
-          |    "create new record" in new AutoRollback {
-          |      val created = %className%.create(%createFields%)
-          |      created should not beNull
-          |    }
-          |    "save a record" in new AutoRollback {
-          |      val entity = %className%.findAll().head
-          |      // TODO modify something
-          |      val modified = entity
-          |      val updated = %className%.save(modified)
-          |      updated should not equalTo(entity)
-          |    }
-          |    "destroy a record" in new AutoRollback {
-          |      val entity = %className%.findAll().head
-          |      val deleted = %className%.destroy(entity) == 1
-          |      deleted should beTrue
-          |      val shouldBeNone = %className%.find(%primaryKeys%)
-          |      shouldBeNone.isDefined should beFalse
-          |    }
-          |    "perform batch insert" in new AutoRollback {
-          |      val entities = %className%.findAll()
-          |      entities.foreach(e => %className%.destroy(e))
-          |      val batchInserted = %className%.batchInsert(entities)
-          |      batchInserted.size should be_>(0)
-          |    }
-          |  }
-          |
-          |}""".stripMargin + eol))
-    case GeneratorTestTemplate.specs2acceptance =>
-      Some(replaceVariablesForTestPart(
-        s"""package %package%
-          |
-          |import scalikejdbc.specs2.AutoRollback
-          |import org.specs2._
-          |import scalikejdbc._
-          |$timeImport
-          |
-          |class %className%Spec extends Specification { def is =
-          |
-          |  "The '%className%' model should" ^
-          |    "find by primary keys"         ! autoRollback().findByPrimaryKeys ^
-          |    "find by where clauses"        ! autoRollback().findBy ^
-          |    "find all records"             ! autoRollback().findAll ^
-          |    "count all records"            ! autoRollback().countAll ^
-          |    "find all by where clauses"    ! autoRollback().findAllBy ^
-          |    "count by where clauses"       ! autoRollback().countBy ^
-          |    "create new record"            ! autoRollback().create ^
-          |    "save a record"                ! autoRollback().save ^
-          |    "destroy a record"             ! autoRollback().destroy ^
-          |    "perform batch insert"         ! autoRollback().batchInsert ^
-          |                                   end
-          |
-          |  case class autoRollback() extends AutoRollback {
-          |    %syntaxObject%
-          |
-          |    def findByPrimaryKeys = this {
-          |      val maybeFound = %className%.find(%primaryKeys%)
-          |      maybeFound.isDefined should beTrue
-          |    }
-          |    def findBy = this {
-          |      val maybeFound = %className%.findBy(%whereExample%)
-          |      maybeFound.isDefined should beTrue
-          |    }
-          |    def findAll = this {
-          |      val allResults = %className%.findAll()
-          |      allResults.size should be_>(0)
-          |    }
-          |    def countAll = this {
-          |      val count = %className%.countAll()
-          |      count should be_>(0L)
-          |    }
-          |    def findAllBy = this {
-          |      val results = %className%.findAllBy(%whereExample%)
-          |      results.size should be_>(0)
-          |    }
-          |    def countBy = this {
-          |      val count = %className%.countBy(%whereExample%)
-          |      count should be_>(0L)
-          |    }
-          |    def create = this {
-          |      val created = %className%.create(%createFields%)
-          |      created should not beNull
-          |    }
-          |    def save = this {
-          |      val entity = %className%.findAll().head
-          |      // TODO modify something
-          |      val modified = entity
-          |      val updated = %className%.save(modified)
-          |      updated should not equalTo(entity)
-          |    }
-          |    def destroy = this {
-          |      val entity = %className%.findAll().head
-          |      val deleted = %className%.destroy(entity) == 1
-          |      deleted should beTrue
-          |      val shouldBeNone = %className%.find(%primaryKeys%)
-          |      shouldBeNone.isDefined should beFalse
-          |    }
-          |    def batchInsert = this {
-          |      val entities = %className%.findAll()
-          |      entities.foreach(e => %className%.destroy(e))
-          |      val batchInserted = %className%.batchInsert(entities)
-          |      batchInserted.size should be_>(0)
-          |    }
-          |  }
-          |
-          |}""".stripMargin + eol))
-    case GeneratorTestTemplate(name) => None
+  def specAll(): Option[String] = {
+    config.testTemplate match {
+      case GeneratorTestTemplate.ScalaTestFlatSpec =>
+        Some(replaceVariablesForTestPart(
+          s"""package %package%
+             |
+             |import org.scalatest.flatspec.FixtureAnyFlatSpec
+             |import org.scalatest.matchers.should.Matchers
+             |import scalikejdbc.scalatest.AutoRollback
+             |import scalikejdbc._
+             |$timeImport
+             |
+             |class %className%Spec extends FixtureAnyFlatSpec with Matchers with AutoRollback %baseTypes% {
+             |  %syntaxObject%
+             |
+             |  behavior of "%className%"
+             |
+             |  it should "find by primary keys" in { implicit session =>
+             |    val maybeFound = %className%.find(%primaryKeys%)
+             |    maybeFound.isDefined should be(true)
+             |  }
+             |  it should "find by where clauses" in { implicit session =>
+             |    val maybeFound = %className%.findBy(%whereExample%)
+             |    maybeFound.isDefined should be(true)
+             |  }
+             |  it should "find all records" in { implicit session =>
+             |    val allResults = %className%.findAll()
+             |    allResults.size should be >(0)
+             |  }
+             |  it should "count all records" in { implicit session =>
+             |    val count = %className%.countAll()
+             |    count should be >(0L)
+             |  }
+             |  it should "find all by where clauses" in { implicit session =>
+             |    val results = %className%.findAllBy(%whereExample%)
+             |    results.size should be >(0)
+             |  }
+             |  it should "count by where clauses" in { implicit session =>
+             |    val count = %className%.countBy(%whereExample%)
+             |    count should be >(0L)
+             |  }
+             |  it should "create new record" in { implicit session =>
+             |    val created = %className%.create(%createFields%)
+             |    created should not be(null)
+             |  }
+             |  it should "save a record" in { implicit session =>
+             |    val entity = %className%.findAll().head
+             |    // TODO modify something
+             |    val modified = entity
+             |    val updated = %className%.save(modified)
+             |    updated should not equal(entity)
+             |  }
+             |  it should "destroy a record" in { implicit session =>
+             |    val entity = %className%.findAll().head
+             |    val deleted = %className%.destroy(entity)
+             |    deleted should be(1)
+             |    val shouldBeNone = %className%.find(%primaryKeys%)
+             |    shouldBeNone.isDefined should be(false)
+             |  }
+             |  it should "perform batch insert" in { implicit session =>
+             |    val entities = %className%.findAll()
+             |    entities.foreach(e => %className%.destroy(e))
+             |    val batchInserted = %className%.batchInsert(entities)
+             |    batchInserted.size should be >(0)
+             |  }
+             |}""".stripMargin + eol))
+      case GeneratorTestTemplate.specs2unit =>
+        Some(replaceVariablesForTestPart(
+          s"""package %package%
+             |
+             |import scalikejdbc.specs2.mutable.AutoRollback
+             |import org.specs2.mutable._
+             |import scalikejdbc._
+             |$timeImport
+             |
+             |class %className%Spec extends Specification %baseTypes% {
+             |
+             |  "%className%" should {
+             |
+             |    %syntaxObject%
+             |
+             |    "find by primary keys" in new AutoRollback {
+             |      val maybeFound = %className%.find(%primaryKeys%)
+             |      maybeFound.isDefined should beTrue
+             |    }
+             |    "find by where clauses" in new AutoRollback {
+             |      val maybeFound = %className%.findBy(%whereExample%)
+             |      maybeFound.isDefined should beTrue
+             |    }
+             |    "find all records" in new AutoRollback {
+             |      val allResults = %className%.findAll()
+             |      allResults.size should be_>(0)
+             |    }
+             |    "count all records" in new AutoRollback {
+             |      val count = %className%.countAll()
+             |      count should be_>(0L)
+             |    }
+             |    "find all by where clauses" in new AutoRollback {
+             |      val results = %className%.findAllBy(%whereExample%)
+             |      results.size should be_>(0)
+             |    }
+             |    "count by where clauses" in new AutoRollback {
+             |      val count = %className%.countBy(%whereExample%)
+             |      count should be_>(0L)
+             |    }
+             |    "create new record" in new AutoRollback {
+             |      val created = %className%.create(%createFields%)
+             |      created should not beNull
+             |    }
+             |    "save a record" in new AutoRollback {
+             |      val entity = %className%.findAll().head
+             |      // TODO modify something
+             |      val modified = entity
+             |      val updated = %className%.save(modified)
+             |      updated should not equalTo(entity)
+             |    }
+             |    "destroy a record" in new AutoRollback {
+             |      val entity = %className%.findAll().head
+             |      val deleted = %className%.destroy(entity) == 1
+             |      deleted should beTrue
+             |      val shouldBeNone = %className%.find(%primaryKeys%)
+             |      shouldBeNone.isDefined should beFalse
+             |    }
+             |    "perform batch insert" in new AutoRollback {
+             |      val entities = %className%.findAll()
+             |      entities.foreach(e => %className%.destroy(e))
+             |      val batchInserted = %className%.batchInsert(entities)
+             |      batchInserted.size should be_>(0)
+             |    }
+             |  }
+             |
+             |}""".stripMargin + eol))
+      case GeneratorTestTemplate.specs2acceptance =>
+        Some(replaceVariablesForTestPart(
+          s"""package %package%
+             |
+             |import scalikejdbc.specs2.AutoRollback
+             |import org.specs2._
+             |import scalikejdbc._
+             |$timeImport
+             |
+             |class %className%Spec extends Specification %baseTypes% { def is =
+             |
+             |  "The '%className%' model should" ^
+             |    "find by primary keys"         ! autoRollback().findByPrimaryKeys ^
+             |    "find by where clauses"        ! autoRollback().findBy ^
+             |    "find all records"             ! autoRollback().findAll ^
+             |    "count all records"            ! autoRollback().countAll ^
+             |    "find all by where clauses"    ! autoRollback().findAllBy ^
+             |    "count by where clauses"       ! autoRollback().countBy ^
+             |    "create new record"            ! autoRollback().create ^
+             |    "save a record"                ! autoRollback().save ^
+             |    "destroy a record"             ! autoRollback().destroy ^
+             |    "perform batch insert"         ! autoRollback().batchInsert ^
+             |                                   end
+             |
+             |  case class autoRollback() extends AutoRollback {
+             |    %syntaxObject%
+             |
+             |    def findByPrimaryKeys = this {
+             |      val maybeFound = %className%.find(%primaryKeys%)
+             |      maybeFound.isDefined should beTrue
+             |    }
+             |    def findBy = this {
+             |      val maybeFound = %className%.findBy(%whereExample%)
+             |      maybeFound.isDefined should beTrue
+             |    }
+             |    def findAll = this {
+             |      val allResults = %className%.findAll()
+             |      allResults.size should be_>(0)
+             |    }
+             |    def countAll = this {
+             |      val count = %className%.countAll()
+             |      count should be_>(0L)
+             |    }
+             |    def findAllBy = this {
+             |      val results = %className%.findAllBy(%whereExample%)
+             |      results.size should be_>(0)
+             |    }
+             |    def countBy = this {
+             |      val count = %className%.countBy(%whereExample%)
+             |      count should be_>(0L)
+             |    }
+             |    def create = this {
+             |      val created = %className%.create(%createFields%)
+             |      created should not beNull
+             |    }
+             |    def save = this {
+             |      val entity = %className%.findAll().head
+             |      // TODO modify something
+             |      val modified = entity
+             |      val updated = %className%.save(modified)
+             |      updated should not equalTo(entity)
+             |    }
+             |    def destroy = this {
+             |      val entity = %className%.findAll().head
+             |      val deleted = %className%.destroy(entity) == 1
+             |      deleted should beTrue
+             |      val shouldBeNone = %className%.find(%primaryKeys%)
+             |      shouldBeNone.isDefined should beFalse
+             |    }
+             |    def batchInsert = this {
+             |      val entities = %className%.findAll()
+             |      entities.foreach(e => %className%.destroy(e))
+             |      val batchInserted = %className%.batchInsert(entities)
+             |      batchInserted.size should be_>(0)
+             |    }
+             |  }
+             |
+             |}""".stripMargin + eol))
+      case GeneratorTestTemplate(name) => None
+    }
   }
 
   private def replaceVariablesForTestPart(code: String): String = {
@@ -1034,6 +1002,11 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
     val pkColumns = if (table.primaryKeyColumns.isEmpty) table.allColumns else table.primaryKeyColumns
     code.replace("%package%", packageName)
       .replace("%className%", className)
+      .replace("%baseTypes%", {
+        val types = config.tableNameToSpecBaseTypes(table.name).map(_.replace("$className", className))
+        if (types.isEmpty) ""
+        else types.mkString("with ", " with ", " ")
+      })
       .replace("%primaryKeys%", pkColumns.map {
         c => c.defaultValueInScala
       }.mkString(", "))

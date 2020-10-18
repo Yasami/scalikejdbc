@@ -37,14 +37,18 @@ object ScalikejdbcPlugin extends AutoPlugin {
       dateTimeClass: DateTimeClass,
       tableNameToClassName: String => String,
       columnNameToFieldName: String => String,
+      columnNameToFieldType: PartialFunction[(String, String), String],
       columnTypeToFieldType: PartialFunction[Int, String],
+      fieldTypeToDefaultValue: PartialFunction[String, String],
       returnCollectionType: ReturnCollectionType,
       view: Boolean,
       tableNamesToSkip: collection.Seq[String],
       baseTypes: collection.Seq[String],
       companionBaseTypes: collection.Seq[String],
+      specBaseTypes: collection.Seq[String],
       tableNameToSyntaxName: String => String,
-      tableNameToSyntaxVariableName: String => String)
+      tableNameToSyntaxVariableName: String => String,
+      abstractSpec: Boolean)
   }
 
   import autoImport._
@@ -81,13 +85,15 @@ object ScalikejdbcPlugin extends AutoPlugin {
   private[this] final val TABLE_NAMES_TO_SKIP = GENERATOR + "tableNamesToSkip"
   private[this] final val BASE_TYPES = GENERATOR + "baseTypes"
   private[this] final val COMPANION_BASE_TYPES = GENERATOR + "companionBaseTypes"
+  private[this] final val SPEC_BASE_TYPES = GENERATOR + "specBaseTypes"
+  private[this] final val ABSTRACT_SPEC = GENERATOR + "abstractSpec"
 
   private[this] val jdbcKeys = Set(
     JDBC_DRIVER, JDBC_URL, JDBC_USER_NAME, JDBC_PASSWORD, JDBC_SCHEMA)
   private[this] val generatorKeys = Set(
     PACKAGE_NAME, TEMPLATE, TEST_TEMPLATE, LINE_BREAK,
     ENCODING, AUTO_CONSTRUCT, DEFAULT_AUTO_SESSION, DATETIME_CLASS, RETURN_COLLECTION_TYPE,
-    VIEW, TABLE_NAMES_TO_SKIP, BASE_TYPES, COMPANION_BASE_TYPES)
+    VIEW, TABLE_NAMES_TO_SKIP, BASE_TYPES, COMPANION_BASE_TYPES, SPEC_BASE_TYPES, ABSTRACT_SPEC)
   private[this] val allKeys = jdbcKeys ++ generatorKeys
 
   private[this] def printWarningIfTypo(props: Properties): Unit = {
@@ -123,7 +129,9 @@ object ScalikejdbcPlugin extends AutoPlugin {
       }.getOrElse(defaultConfig.dateTimeClass),
       defaultConfig.tableNameToClassName,
       defaultConfig.columnNameToFieldName,
+      defaultConfig.columnNameToFieldType,
       defaultConfig.columnTypeToFieldType,
+      defaultConfig.fieldTypeToDefaultValue,
       returnCollectionType = getString(props, RETURN_COLLECTION_TYPE).map { name =>
         ReturnCollectionType.map.getOrElse(
           name.toLowerCase(en),
@@ -133,8 +141,10 @@ object ScalikejdbcPlugin extends AutoPlugin {
       tableNamesToSkip = getString(props, TABLE_NAMES_TO_SKIP).map(_.split(",").toList).getOrElse(defaultConfig.tableNamesToSkip),
       baseTypes = commaSeparated(props, BASE_TYPES),
       companionBaseTypes = commaSeparated(props, COMPANION_BASE_TYPES),
+      specBaseTypes = commaSeparated(props, SPEC_BASE_TYPES),
       tableNameToSyntaxName = defaultConfig.tableNameToSyntaxName,
-      tableNameToSyntaxVariableName = defaultConfig.tableNameToSyntaxVariableName)
+      tableNameToSyntaxVariableName = defaultConfig.tableNameToSyntaxVariableName,
+      abstractSpec = getString(props, ABSTRACT_SPEC).map(_.toBoolean).getOrElse(defaultConfig.abstractSpec))
   }
 
   private[this] def loadPropertiesFromFile(): Either[FileNotFoundException, Properties] = {
@@ -175,14 +185,18 @@ object ScalikejdbcPlugin extends AutoPlugin {
       dateTimeClass = generatorSettings.dateTimeClass,
       tableNameToClassName = generatorSettings.tableNameToClassName,
       columnNameToFieldName = generatorSettings.columnNameToFieldName,
+      columnNameToFieldType = generatorSettings.columnNameToFieldType,
       columnTypeToFieldType = generatorSettings.columnTypeToFieldType,
+      fieldTypeToDefaultValue = generatorSettings.fieldTypeToDefaultValue,
       returnCollectionType = generatorSettings.returnCollectionType,
       view = generatorSettings.view,
       tableNamesToSkip = generatorSettings.tableNamesToSkip,
       tableNameToBaseTypes = _ => generatorSettings.baseTypes,
       tableNameToCompanionBaseTypes = _ => generatorSettings.companionBaseTypes,
+      tableNameToSpecBaseTypes = _ => generatorSettings.specBaseTypes,
       tableNameToSyntaxName = generatorSettings.tableNameToSyntaxName,
-      tableNameToSyntaxVariableName = generatorSettings.tableNameToSyntaxVariableName)
+      tableNameToSyntaxVariableName = generatorSettings.tableNameToSyntaxVariableName,
+      abstractSpec = generatorSettings.abstractSpec)
 
   private def generator(tableName: String, className: Option[String], srcDir: File, testDir: File, jdbc: JDBCSettings, generatorSettings: GeneratorSettings): Option[CodeGenerator] = {
     val config = generatorConfig(srcDir, testDir, generatorSettings)
