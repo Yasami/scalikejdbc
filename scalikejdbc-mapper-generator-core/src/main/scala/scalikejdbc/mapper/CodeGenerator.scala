@@ -1,6 +1,7 @@
 package scalikejdbc.mapper
 
 import java.sql.JDBCType
+import java.util.Locale
 import java.util.Locale.ENGLISH
 
 import scalikejdbc._
@@ -1032,5 +1033,81 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
       }.mkString(", "))
   }
 
+  // -----------------------
+  // Arbitrary
+  // -----------------------
+
+  private[this] def outputArbitraryFile =
+    new File(config.testDir + "/" + packageName.replace(".", "/") + "/" + className + "Arbitrary.scala")
+
+  def writeArbitraryIfNotExist(code: Option[String]): Unit = {
+    if (outputArbitraryFile.exists) {
+      println("\"" + packageName + "." + className + "Arbitrary\"" + " already exists.")
+    } else {
+      writeSpec(code)
+    }
+  }
+
+  def writeArbitrary(code: Option[String]): Unit = {
+    code.foreach { code =>
+      mkdirRecursively(outputArbitraryFile.getParentFile)
+      using(new FileOutputStream(outputArbitraryFile)) {
+        fos =>
+          using(new OutputStreamWriter(fos)) {
+            writer =>
+              writer.write(code)
+              println("\"" + packageName + "." + className + "Arbitrary\"" + " created.")
+          }
+      }
+    }
+  }
+
+  def genObjectPart: String = {
+    val valueName = s"${className.head.toLower}${className.tail}Arbitrary"
+
+    val forEnumerators = table.allColumns.map {
+      c => 3.indent + c.nameInScala + " <- arbitrary[" + c.typeInScala + "]"
+    }.mkString(eol)
+
+    val applyArgs = table.allColumns.map {
+      c => 3.indent + c.nameInScala + " = " + c.nameInScala
+    }.mkString("," + eol)
+
+    s"""object ${className}Arbitrary {
+       |  implicit val ${valueName}: Arbitrary[${className}] = Arbitrary {
+       |    for {
+       |${forEnumerators}
+       |    } yield ${className} (
+       |${applyArgs}
+       |    )
+       |  }
+       |
+       |
+       |}""".stripMargin + eol
+  }
+
+  def arbitraryAll(): Option[String] = {
+
+    val scalaCheckImport = Seq(
+      "import org.scalacheck.{Arbitrary, Gen}",
+      "import org.scalacheck.Arbitrary._").mkString(eol)
+
+    val compatImport =
+      if (config.returnCollectionType == ReturnCollectionType.Factory) {
+        "import scala.collection.compat._" + eol
+      } else {
+        ""
+      }
+
+    val generator = "package " + config.packageName + eol +
+      eol +
+      compatImport +
+      scalaCheckImport + eol +
+      "import scalikejdbc._" + eol +
+      timeImport +
+      eol +
+      genObjectPart + eol
+    Some(generator)
+  }
 }
 

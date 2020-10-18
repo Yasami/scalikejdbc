@@ -257,6 +257,7 @@ object ScalikejdbcPlugin extends AutoPlugin {
       gen.foreach { g =>
         g.writeModelIfNonexistentAndUnskippable()
         g.writeSpecIfNotExist(g.specAll())
+        g.writeArbitraryIfNotExist(g.arbitraryAll())
       }
     },
     scalikejdbcGenForce := {
@@ -265,18 +266,21 @@ object ScalikejdbcPlugin extends AutoPlugin {
       gen.foreach { g =>
         g.writeModel()
         g.writeSpec(g.specAll())
+        g.writeArbitrary(g.arbitraryAll())
       }
     },
     scalikejdbcGenAll := {
       scalikejdbcCodeGeneratorAll.value.apply(scalikejdbcJDBCSettings.value, scalikejdbcGeneratorSettings.value).foreach { g =>
         g.writeModelIfNonexistentAndUnskippable()
         g.writeSpecIfNotExist(g.specAll())
+        g.writeArbitraryIfNotExist(g.arbitraryAll())
       }
     },
     scalikejdbcGenAllForce := {
       scalikejdbcCodeGeneratorAll.value.apply(scalikejdbcJDBCSettings.value, scalikejdbcGeneratorSettings.value).foreach { g =>
         g.writeModel()
         g.writeSpec(g.specAll())
+        g.writeArbitrary(g.arbitraryAll())
       }
     },
     scalikejdbcGenEcho := {
