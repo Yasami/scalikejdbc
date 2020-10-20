@@ -21,6 +21,8 @@ case class Model(url: String, username: String, password: String) extends AutoCl
 
   private def columnDataType(implicit rs: WrappedResultSet): Int = rs.string("DATA_TYPE").toInt
 
+  private def columnSize(implicit rs: WrappedResultSet): Int = rs.string("COLUMN_SIZE").toInt
+
   private def isNotNull(implicit rs: WrappedResultSet): Boolean = {
     val isNullable = rs.string("IS_NULLABLE")
     isNullable == "NO" || isNullable == "N"
@@ -60,7 +62,7 @@ case class Model(url: String, username: String, password: String) extends AutoCl
     using(ConnectionPool.get(poolName).borrow()) { conn =>
       val meta = conn.getMetaData
       new ResultSetIterator(meta.getColumns(catalog, _schema, tableName, "%"))
-        .map { implicit rs => Column(columnName, columnDataType, isNotNull, isAutoIncrement) }
+        .map { implicit rs => Column(columnName, columnDataType, columnSize, isNotNull, isAutoIncrement) }
         .toList.distinct match {
           case Nil => None
           case allColumns =>

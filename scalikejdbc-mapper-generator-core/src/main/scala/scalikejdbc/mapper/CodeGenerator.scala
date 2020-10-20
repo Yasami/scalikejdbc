@@ -742,6 +742,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
       } else {
         ""
       }
+    val additionalImport = config.additionalImports.map(i => s"import $i").mkString("", eol, eol)
 
     "package " + config.packageName + eol +
       eol +
@@ -749,6 +750,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
       "import scalikejdbc._" + eol +
       timeImport +
       javaSqlImport +
+      additionalImport +
       eol +
       classPart + eol +
       eol +
@@ -759,12 +761,14 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
   // Spec
   // -----------------------
 
+  private[this] val specClassName = (if (config.abstractSpec) s"Abstract${className}" else className) + "Spec"
+
   private[this] def outputSpecFile =
-    new File(config.testDir + "/" + packageName.replace(".", "/") + "/" + className + "Spec.scala")
+    new File(config.testDir + "/" + packageName.replace(".", "/") + "/" + specClassName + ".scala")
 
   def writeSpecIfNotExist(code: Option[String]): Unit = {
     if (outputSpecFile.exists) {
-      println("\"" + packageName + "." + className + "Spec\"" + " already exists.")
+      println("\"" + packageName + "." + specClassName + "\"" + " already exists.")
     } else {
       writeSpec(code)
     }
@@ -778,7 +782,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
           using(new OutputStreamWriter(fos)) {
             writer =>
               writer.write(code)
-              println("\"" + packageName + "." + className + "Spec\"" + " created.")
+              println("\"" + packageName + "." + specClassName + "\"" + " created.")
           }
       }
     }
@@ -795,8 +799,9 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
              |import scalikejdbc.scalatest.AutoRollback
              |import scalikejdbc._
              |$timeImport
+             |%additionalImport%
              |
-             |class %className%Spec extends FixtureAnyFlatSpec with Matchers with AutoRollback %baseTypes% {
+             |%modifier%class %specClassName% extends FixtureAnyFlatSpec with Matchers with AutoRollback %baseTypes% {
              |  %syntaxObject%
              |
              |  behavior of "%className%"
@@ -858,8 +863,9 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
              |import org.specs2.mutable._
              |import scalikejdbc._
              |$timeImport
+             |%additionalImport%
              |
-             |class %className%Spec extends Specification %baseTypes% {
+             |%modifier%class %specClassName% extends Specification %baseTypes% {
              |
              |  "%className%" should {
              |
@@ -924,8 +930,9 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
              |import org.specs2._
              |import scalikejdbc._
              |$timeImport
+             |%additionalImport%
              |
-             |class %className%Spec extends Specification %baseTypes% { def is =
+             |%modifier%class %specClassName% extends Specification %baseTypes% { def is =
              |
              |  "The '%className%' model should" ^
              |    "find by primary keys"         ! autoRollback().findByPrimaryKeys ^
@@ -1002,6 +1009,9 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
     val isQueryDsl = config.template == GeneratorTemplate.queryDsl
     val pkColumns = if (table.primaryKeyColumns.isEmpty) table.allColumns else table.primaryKeyColumns
     code.replace("%package%", packageName)
+      .replace("%additionalImport%", config.specAdditionalImports.map(i => s"import $i").mkString(eol))
+      .replace("%modifier%", if (config.abstractSpec) "abstract " else "")
+      .replace("%specClassName%", specClassName)
       .replace("%className%", className)
       .replace("%baseTypes%", {
         val types = config.tableNameToSpecBaseTypes(table.name).map(_.replace("$className", className))
@@ -1063,34 +1073,43 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
   }
 
   def genObjectPart: String = {
-    val valueName = s"${className.head.toLower}${className.tail}Arbitrary"
+    def toMethodName(c: Column) = s"gen${c.nameInScala.head.toUpper}${c.nameInScala.tail}"
+    val enumerators = table.allColumns.map { c =>
+      val param = c.rawTypeInScala match {
+        case "String" => c.size.toString
+        case _ => ""
+      }
+      3.indent + c.nameInScala + " <- " + s"${toMethodName(c)}($param)"
+    }.mkString(eol)
 
-    val forEnumerators = table.allColumns.map {
-      c => 3.indent + c.nameInScala + " <- arbitrary[" + c.typeInScala + "]"
+    val methodDefinitions = table.allColumns.map { c =>
+      val param = c.rawTypeInScala match {
+        case "String" => "size: Int"
+        case _ => ""
+      }
+      1.indent + s"def ${toMethodName(c)}($param): Gen[${c.typeInScala}] = Arbitrary.arbitrary[${c.typeInScala}]$eol"
     }.mkString(eol)
 
     val applyArgs = table.allColumns.map {
       c => 3.indent + c.nameInScala + " = " + c.nameInScala
     }.mkString("," + eol)
 
-    s"""object ${className}Arbitrary {
-       |  implicit val ${valueName}: Arbitrary[${className}] = Arbitrary {
+    s"""trait ${className}Arbitrary {
+       |  def arbitrary: Arbitrary[${className}] = Arbitrary {
        |    for {
-       |${forEnumerators}
+       |${enumerators}
        |    } yield ${className} (
        |${applyArgs}
        |    )
        |  }
        |
-       |
+       |${methodDefinitions}
        |}""".stripMargin + eol
   }
 
   def arbitraryAll(): Option[String] = {
 
-    val scalaCheckImport = Seq(
-      "import org.scalacheck.{Arbitrary, Gen}",
-      "import org.scalacheck.Arbitrary._").mkString(eol)
+    val scalaCheckImport = "import org.scalacheck.{Arbitrary, Gen}" + eol
 
     val compatImport =
       if (config.returnCollectionType == ReturnCollectionType.Factory) {
@@ -1099,12 +1118,15 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
         ""
       }
 
+    val additionalImport = config.arbitraryAdditionalImports.map(i => s"import $i").mkString(eol)
+
     val generator = "package " + config.packageName + eol +
       eol +
       compatImport +
       scalaCheckImport + eol +
       "import scalikejdbc._" + eol +
-      timeImport +
+      timeImport + eol +
+      additionalImport + eol +
       eol +
       genObjectPart + eol
     Some(generator)

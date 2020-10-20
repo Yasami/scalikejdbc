@@ -48,7 +48,10 @@ object ScalikejdbcPlugin extends AutoPlugin {
       specBaseTypes: collection.Seq[String],
       tableNameToSyntaxName: String => String,
       tableNameToSyntaxVariableName: String => String,
-      abstractSpec: Boolean)
+      abstractSpec: Boolean,
+      additionalImports: collection.Seq[String],
+      specAdditionalImports: collection.Seq[String],
+      arbitraryAdditionalImports: collection.Seq[String])
   }
 
   import autoImport._
@@ -87,13 +90,17 @@ object ScalikejdbcPlugin extends AutoPlugin {
   private[this] final val COMPANION_BASE_TYPES = GENERATOR + "companionBaseTypes"
   private[this] final val SPEC_BASE_TYPES = GENERATOR + "specBaseTypes"
   private[this] final val ABSTRACT_SPEC = GENERATOR + "abstractSpec"
+  private[this] final val ADDITIONAL_IMPORTS = GENERATOR + "additionalImports"
+  private[this] final val SPEC_ADDITIONAL_IMPORTS = GENERATOR + "specAdditionalImports"
+  private[this] final val ARBITRARY_ADDITIONAL_IMPORTS = GENERATOR + "arbitraryAdditionalImports"
 
   private[this] val jdbcKeys = Set(
     JDBC_DRIVER, JDBC_URL, JDBC_USER_NAME, JDBC_PASSWORD, JDBC_SCHEMA)
   private[this] val generatorKeys = Set(
     PACKAGE_NAME, TEMPLATE, TEST_TEMPLATE, LINE_BREAK,
     ENCODING, AUTO_CONSTRUCT, DEFAULT_AUTO_SESSION, DATETIME_CLASS, RETURN_COLLECTION_TYPE,
-    VIEW, TABLE_NAMES_TO_SKIP, BASE_TYPES, COMPANION_BASE_TYPES, SPEC_BASE_TYPES, ABSTRACT_SPEC)
+    VIEW, TABLE_NAMES_TO_SKIP, BASE_TYPES, COMPANION_BASE_TYPES, SPEC_BASE_TYPES, ABSTRACT_SPEC,
+    ADDITIONAL_IMPORTS, SPEC_ADDITIONAL_IMPORTS, ARBITRARY_ADDITIONAL_IMPORTS)
   private[this] val allKeys = jdbcKeys ++ generatorKeys
 
   private[this] def printWarningIfTypo(props: Properties): Unit = {
@@ -144,7 +151,10 @@ object ScalikejdbcPlugin extends AutoPlugin {
       specBaseTypes = commaSeparated(props, SPEC_BASE_TYPES),
       tableNameToSyntaxName = defaultConfig.tableNameToSyntaxName,
       tableNameToSyntaxVariableName = defaultConfig.tableNameToSyntaxVariableName,
-      abstractSpec = getString(props, ABSTRACT_SPEC).map(_.toBoolean).getOrElse(defaultConfig.abstractSpec))
+      abstractSpec = getString(props, ABSTRACT_SPEC).map(_.toBoolean).getOrElse(defaultConfig.abstractSpec),
+      additionalImports = commaSeparated(props, ADDITIONAL_IMPORTS),
+      specAdditionalImports = commaSeparated(props, SPEC_ADDITIONAL_IMPORTS),
+      arbitraryAdditionalImports = commaSeparated(props, ARBITRARY_ADDITIONAL_IMPORTS))
   }
 
   private[this] def loadPropertiesFromFile(): Either[FileNotFoundException, Properties] = {
@@ -196,7 +206,10 @@ object ScalikejdbcPlugin extends AutoPlugin {
       tableNameToSpecBaseTypes = _ => generatorSettings.specBaseTypes,
       tableNameToSyntaxName = generatorSettings.tableNameToSyntaxName,
       tableNameToSyntaxVariableName = generatorSettings.tableNameToSyntaxVariableName,
-      abstractSpec = generatorSettings.abstractSpec)
+      abstractSpec = generatorSettings.abstractSpec,
+      additionalImports = generatorSettings.additionalImports,
+      specAdditionalImports = generatorSettings.specAdditionalImports,
+      arbitraryAdditionalImports = generatorSettings.arbitraryAdditionalImports)
 
   private def generator(tableName: String, className: Option[String], srcDir: File, testDir: File, jdbc: JDBCSettings, generatorSettings: GeneratorSettings): Option[CodeGenerator] = {
     val config = generatorConfig(srcDir, testDir, generatorSettings)
