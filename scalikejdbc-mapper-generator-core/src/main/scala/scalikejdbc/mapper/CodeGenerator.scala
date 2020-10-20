@@ -56,10 +56,11 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
     lazy val nameInScala: String = config.columnNameToFieldName(underlying.name)
 
     lazy val rawTypeInScala: String = {
+      val Column(name, typ, typeName, size, notNull, autoIncrement, generated) = underlying
+      println(s"name=$name, type=$typ, typeName=$typeName, size=$size, notNull=$notNull, autoIncrement=$autoIncrement, generated=$generated")
       config.columnNameToFieldType.lift((className, nameInScala)).getOrElse {
-        config.columnTypeToFieldType.applyOrElse(
-          underlying.dataType,
-          (dataType: Int) => JDBCType.valueOf(dataType) match {
+        config.columnTypeToFieldType.lift(underlying.dataTypeName).getOrElse {
+          JDBCType.valueOf(underlying.dataType) match {
             case JavaSqlTypes.ARRAY => TypeName.AnyArray
             case JavaSqlTypes.BIGINT => TypeName.Long
             case JavaSqlTypes.BINARY => TypeName.ByteArray
@@ -94,7 +95,8 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
             case JavaSqlTypes.NCHAR => TypeName.String
             case JavaSqlTypes.LONGNVARCHAR => TypeName.String
             case _ => TypeName.Any
-          })
+          }
+        }
       }
     }
 
@@ -274,14 +276,11 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
      * }}}
      */
     val createMethod = {
-      val autoIncrement = table.autoIncrementColumns.nonEmpty
-      val createColumns: List[Column] =
-        if (autoIncrement)
-          allColumns.filterNot {
-            c => table.autoIncrementColumns.exists(_.name == c.name)
-          }
-        else
-          allColumns
+      val createColumns: List[Column] = allColumns.filterNot { c =>
+        table.autoIncrementColumns.exists(_.name == c.name)
+      }.filterNot { c =>
+        table.generatedColumns.exists(_.name == c.name)
+      }
       val placeHolderPart: String = config.template match {
         case GeneratorTemplate.interpolation =>
           // ${id}, ${name}
@@ -325,7 +324,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
         eol +
         eol +
         2.indent + className + "(" + eol +
-        (if (autoIncrement)
+        (if (table.autoIncrementColumns.nonEmpty)
           table.autoIncrementColumns.headOption.map { c =>
           3.indent + c.nameInScala +
             (c.typeInScala match {
@@ -367,13 +366,15 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
      * }}}
      */
     val saveMethod = {
-
+      val updateColumns = allColumns.filterNot { c =>
+        table.generatedColumns.exists(_.name == c.name)
+      }
       val placeHolderPart: String = config.template match {
         case GeneratorTemplate.interpolation =>
           // ${column.id} = ${entity.id}, ${column.name} = ${entity.name}
-          allColumns.map(c => 4.indent + "${column." + c.nameInScala + "} = ${entity." + c.nameInScala + "}").mkString(comma + eol)
+          updateColumns.map(c => 4.indent + "${column." + c.nameInScala + "} = ${entity." + c.nameInScala + "}").mkString(comma + eol)
         case GeneratorTemplate.queryDsl =>
-          allColumns.map { c =>
+          updateColumns.map { c =>
             4.indent +
               (if (c.isAny) "(column." + c.nameInScala + ", ParameterBinder(entity." + c.nameInScala + ", (ps, i) => ps.setObject(i, entity." + c.nameInScala + ")))"
               else "column." + c.nameInScala + " -> entity." + c.nameInScala)
@@ -616,15 +617,11 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
      * }}}
      */
     val batchInsertMethod = {
-      val autoIncrement = table.autoIncrementColumns.nonEmpty
-      val batchInsertColumns: List[Column] =
-        if (autoIncrement)
-          allColumns.filterNot {
-            c => table.autoIncrementColumns.exists(_.name == c.name)
-          }
-        else
-          allColumns
-
+      val batchInsertColumns: List[Column] = allColumns.filterNot { c =>
+        table.autoIncrementColumns.exists(_.name == c.name)
+      }.filterNot { c =>
+        table.generatedColumns.exists(_.name == c.name)
+      }
       val factory = {
         if (config.returnCollectionType == ReturnCollectionType.Factory)
           s", $C: Factory[Int, $C[Int]]"
@@ -711,12 +708,14 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
 
     table.allColumns.map(_.rawTypeInScala).filter(timeClasses) match {
       case classes if classes.nonEmpty =>
+        val distinct = classes.distinct
+        val (bra, ket) = if (distinct.size == 1) ("", "") else ("{", "}")
         if (config.dateTimeClass == DateTimeClass.JodaDateTime) {
-          "import org.joda.time.{" + classes.distinct.mkString(", ") + "}" + eol +
+          "import org.joda.time." + bra + classes.distinct.mkString(", ") + ket + eol +
             "import scalikejdbc.jodatime.JodaParameterBinderFactory._" + eol +
             "import scalikejdbc.jodatime.JodaTypeBinder._" + eol
         } else {
-          "import java.time.{" + classes.distinct.mkString(", ") + "}" + eol
+          "import java.time." + bra + classes.distinct.mkString(", ") + ket + eol
         }
       case _ => ""
     }
@@ -1036,7 +1035,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
           }.getOrElse(""))
       .replace("%createFields%", table.allColumns.filter {
         c =>
-          c.isNotNull && table.autoIncrementColumns.forall(_.name != c.name)
+          c.isNotNull && table.autoIncrementColumns.forall(_.name != c.name) && table.generatedColumns.forall(_.name != c.name)
       }.map {
         c =>
           c.nameInScala + " = " + c.defaultValueInScala
@@ -1072,44 +1071,94 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
     }
   }
 
-  def genObjectPart: String = {
-    def toMethodName(c: Column) = s"gen${c.nameInScala.head.toUpper}${c.nameInScala.tail}"
-    val enumerators = table.allColumns.map { c =>
-      val param = c.rawTypeInScala match {
-        case "String" => c.size.toString
-        case _ => ""
-      }
-      3.indent + c.nameInScala + " <- " + s"${toMethodName(c)}($param)"
-    }.mkString(eol)
+  def arbitraryTraitPart: String = {
+    val toMethodName = (c: Column) => s"gen${c.nameInScala.head.toUpper}${c.nameInScala.tail}"
 
-    val methodDefinitions = table.allColumns.map { c =>
-      val param = c.rawTypeInScala match {
-        case "String" => "size: Int"
-        case _ => ""
+    def genMethodDefinitionsPart = {
+      val stringUtil = if (table.allColumns.exists(_.rawTypeInScala == "String")) {
+        Seq(
+          1.indent + "def stringArbitrary(max: Int): Gen[String] =",
+          2.indent + "Gen.choose[Int](1, max).flatMap(Gen.listOfN[Char](_, Gen.alphaChar)).map(_.mkString)").mkString("", eol, eol) + eol
+      } else {
+        ""
       }
-      1.indent + s"def ${toMethodName(c)}($param): Gen[${c.typeInScala}] = Arbitrary.arbitrary[${c.typeInScala}]$eol"
-    }.mkString(eol)
 
-    val applyArgs = table.allColumns.map {
-      c => 3.indent + c.nameInScala + " = " + c.nameInScala
-    }.mkString("," + eol)
+      val optStringUtil = if (table.allColumns.exists(_.typeInScala == "Option[String]")) {
+        Seq(
+          1.indent + "def stringOptArbitrary(max: Int): Gen[Option[String]] =",
+          2.indent + "Gen.option(stringArbitrary(max))").mkString("", eol, eol) + eol
+      } else {
+        ""
+      }
+
+      val methodDefinitions = table.allColumns.map { c =>
+        val definition = c.typeInScala match {
+          case "String" =>
+            s"def ${toMethodName(c)}(size: Int): Gen[${c.typeInScala}] = stringArbitrary(size)"
+          case "Option[String]" =>
+            s"def ${toMethodName(c)}(size: Int): Gen[${c.typeInScala}] = stringOptArbitrary(size)"
+          case _ =>
+            s"def ${toMethodName(c)}(): Gen[${c.typeInScala}] = Arbitrary.arbitrary[${c.typeInScala}]"
+        }
+        1.indent + definition
+      }.mkString(eol + eol)
+
+      s"${stringUtil}${optStringUtil}${methodDefinitions}"
+    }
+
+    def arbitraryMethodPart = {
+      val groupedColumns = table.allColumns.grouped(22).zipWithIndex.toList
+      val forExpressions = groupedColumns.map {
+        case (columns, index) =>
+          val values = columns.map(_.nameInScala).mkString("(", ", ", ")")
+          val enumerators = columns.map { c =>
+            val param = c.rawTypeInScala match {
+              case "String" => c.size.toString
+              case _ => ""
+            }
+            s"${3.indent}${c.nameInScala} <- ${toMethodName(c)}($param)"
+          }.mkString(eol)
+          s"""
+           |    val gen$index = for {
+           |${enumerators}
+           |    } yield $values
+           |""".stripMargin
+      }.mkString(eol)
+      val enumerators = groupedColumns.map {
+        case (_, index) =>
+          s"${3.indent}value$index <- gen$index"
+      }.mkString(eol)
+
+      val applyArgs = (for {
+        (cs, i) <- groupedColumns
+        (c, j) <- cs.zipWithIndex
+      } yield s"${3.indent}${c.nameInScala} = value$i._${j + 1}").mkString(", " + eol)
+
+      s"""
+         |  def arbitrary: Arbitrary[${className}] = Arbitrary {
+         |${forExpressions}
+         |    for {
+         |${enumerators}
+         |    } yield ${className} (
+         |${applyArgs}
+         |    )
+         |  }
+         |""".stripMargin
+    }
 
     s"""trait ${className}Arbitrary {
-       |  def arbitrary: Arbitrary[${className}] = Arbitrary {
-       |    for {
-       |${enumerators}
-       |    } yield ${className} (
-       |${applyArgs}
-       |    )
-       |  }
-       |
-       |${methodDefinitions}
-       |}""".stripMargin + eol
+       |${arbitraryMethodPart}
+       |${genMethodDefinitionsPart}
+       |}
+       |""".stripMargin
   }
 
   def arbitraryAll(): Option[String] = {
 
-    val scalaCheckImport = "import org.scalacheck.{Arbitrary, Gen}" + eol
+    val scalaCheckImport =
+      Seq(
+        "import org.scalacheck.{Arbitrary, Gen}",
+        "import org.scalacheck.Arbitrary._").mkString(eol, eol, eol)
 
     val compatImport =
       if (config.returnCollectionType == ReturnCollectionType.Factory) {
@@ -1122,13 +1171,11 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
 
     val generator = "package " + config.packageName + eol +
       eol +
-      compatImport +
-      scalaCheckImport + eol +
-      "import scalikejdbc._" + eol +
+      compatImport + scalaCheckImport +
       timeImport + eol +
       additionalImport + eol +
       eol +
-      genObjectPart + eol
+      arbitraryTraitPart + eol
     Some(generator)
   }
 }

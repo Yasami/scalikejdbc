@@ -21,6 +21,8 @@ case class Model(url: String, username: String, password: String) extends AutoCl
 
   private def columnDataType(implicit rs: WrappedResultSet): Int = rs.string("DATA_TYPE").toInt
 
+  private def columnDataTypeName(implicit rs: WrappedResultSet): String = rs.string("TYPE_NAME")
+
   private def columnSize(implicit rs: WrappedResultSet): Int = rs.string("COLUMN_SIZE").toInt
 
   private def isNotNull(implicit rs: WrappedResultSet): Boolean = {
@@ -32,6 +34,11 @@ case class Model(url: String, username: String, password: String) extends AutoCl
     val isAutoIncrement = rs.string("IS_AUTOINCREMENT")
     isAutoIncrement == "YES" || isAutoIncrement == "Y"
   } catch { case e: Exception => false }
+
+  private def isGenerated(implicit rs: WrappedResultSet): Boolean = try {
+    val isGenerated = rs.string("IS_GENERATEDCOLUMN")
+    isGenerated == "YES" || isGenerated == "Y"
+  } catch { case _: Exception => false }
 
   private[this] def listAllTables(schema: String, types: List[String]): collection.Seq[String] = {
     using(ConnectionPool.get(poolName).borrow()) { conn =>
@@ -62,7 +69,7 @@ case class Model(url: String, username: String, password: String) extends AutoCl
     using(ConnectionPool.get(poolName).borrow()) { conn =>
       val meta = conn.getMetaData
       new ResultSetIterator(meta.getColumns(catalog, _schema, tableName, "%"))
-        .map { implicit rs => Column(columnName, columnDataType, columnSize, isNotNull, isAutoIncrement) }
+        .map { implicit rs => Column(columnName, columnDataType, columnDataTypeName, columnSize, isNotNull, isAutoIncrement, isGenerated) }
         .toList.distinct match {
           case Nil => None
           case allColumns =>
@@ -75,7 +82,8 @@ case class Model(url: String, username: String, password: String) extends AutoCl
                 new ResultSetIterator(meta.getPrimaryKeys(catalog, _schema, tableName))
                   .flatMap { implicit rs => allColumns.find(column => column.name == columnName) }
                   .toList.distinct
-              }))
+              },
+              generatedColumns = allColumns.filter(_.isGenerated).distinct))
         }
     }
   }

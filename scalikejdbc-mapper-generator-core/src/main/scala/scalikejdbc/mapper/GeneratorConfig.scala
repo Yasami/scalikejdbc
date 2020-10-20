@@ -16,7 +16,7 @@ case class GeneratorConfig(
   tableNameToClassName: String => String = GeneratorConfig.toCamelCase,
   columnNameToFieldName: String => String = GeneratorConfig.columnNameToFieldNameBasic andThen GeneratorConfig.addSuffixIfConflict("Column"),
   columnNameToFieldType: PartialFunction[(String, String), String] = PartialFunction.empty,
-  columnTypeToFieldType: PartialFunction[Int, String] = PartialFunction.empty,
+  columnTypeToFieldType: PartialFunction[String, String] = PartialFunction.empty,
   fieldTypeToDefaultValue: PartialFunction[String, String] = PartialFunction.empty,
   returnCollectionType: ReturnCollectionType = ReturnCollectionType.List,
   view: Boolean = false,

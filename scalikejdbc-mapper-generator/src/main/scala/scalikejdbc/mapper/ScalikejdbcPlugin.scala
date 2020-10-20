@@ -38,7 +38,7 @@ object ScalikejdbcPlugin extends AutoPlugin {
       tableNameToClassName: String => String,
       columnNameToFieldName: String => String,
       columnNameToFieldType: PartialFunction[(String, String), String],
-      columnTypeToFieldType: PartialFunction[Int, String],
+      columnTypeToFieldType: PartialFunction[String, String],
       fieldTypeToDefaultValue: PartialFunction[String, String],
       returnCollectionType: ReturnCollectionType,
       view: Boolean,
