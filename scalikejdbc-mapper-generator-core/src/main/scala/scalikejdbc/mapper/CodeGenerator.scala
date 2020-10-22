@@ -251,6 +251,10 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
 
     val defaultAutoSession = if (config.defaultAutoSession) " = autoSession" else ""
 
+    val insertColumns: List[Column] = allColumns.filterNot { c =>
+      table.autoIncrementColumns.exists(_.name == c.name) || table.generatedColumns.exists(_.name == c.name)
+    }
+
     /**
      * {{{
      * def create(name: String, birthday: Option[LocalDate])(implicit session: DBSession = autoSession): Member = {
@@ -276,18 +280,13 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
      * }}}
      */
     val createMethod = {
-      val createColumns: List[Column] = allColumns.filterNot { c =>
-        table.autoIncrementColumns.exists(_.name == c.name)
-      }.filterNot { c =>
-        table.generatedColumns.exists(_.name == c.name)
-      }
       val placeHolderPart: String = config.template match {
         case GeneratorTemplate.interpolation =>
           // ${id}, ${name}
-          createColumns.map(c => 4.indent + "${" + c.nameInScala + "}").mkString(comma + eol)
+          insertColumns.map(c => 4.indent + "${" + c.nameInScala + "}").mkString(comma + eol)
         case GeneratorTemplate.queryDsl =>
           // id, name
-          createColumns.map { c =>
+          insertColumns.map { c =>
             4.indent +
               (if (c.isAny) "(column." + c.nameInScala + ", ParameterBinder(" + c.nameInScala + ", (ps, i) => ps.setObject(i, " + c.nameInScala + ")))"
               else "column." + c.nameInScala + " -> " + c.nameInScala)
@@ -297,7 +296,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
       // def create(
       1.indent + s"def create(" + eol +
         // id: Long, name: Option[String] = None)(implicit session DBSession = autoSession): ClassName = {
-        createColumns.map { c => 2.indent + c.nameInScala + ": " + c.typeInScala + (if (c.isNotNull) "" else " = None") }.mkString(comma + eol) +
+        insertColumns.map { c => 2.indent + c.nameInScala + ": " + c.typeInScala + (if (c.isNotNull) "" else " = None") }.mkString(comma + eol) +
         ")(implicit session: DBSession" + defaultAutoSession + "): " + className + " = {" + eol +
         // val generatedKey =
         2.indent + table.autoIncrementColumns.headOption.map(_ => "val generatedKey = ").getOrElse("") +
@@ -310,7 +309,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
         }) + eol +
         (config.template match {
           case GeneratorTemplate.interpolation =>
-            createColumns.map(c => 4.indent + "${" + "column." + c.nameInScala + "}").mkString(comma + eol) + eol + 3.indent + ") values (" + eol
+            insertColumns.map(c => 4.indent + "${" + "column." + c.nameInScala + "}").mkString(comma + eol) + eol + 3.indent + ") values (" + eol
           case GeneratorTemplate.queryDsl =>
             ""
         }) +
@@ -340,7 +339,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
         }.getOrElse("")
         else
           "") +
-        createColumns.map { c => 3.indent + c.nameInScala + " = " + c.nameInScala }.mkString(comma + eol) + ")" + eol +
+        allColumns.map { c => 3.indent + c.nameInScala + " = " + c.nameInScala }.mkString(comma + eol) + ")" + eol +
         1.indent + "}" + eol
     }
 
@@ -617,28 +616,25 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
      * }}}
      */
     val batchInsertMethod = {
-      val batchInsertColumns: List[Column] = allColumns.filterNot { c =>
-        table.autoIncrementColumns.exists(_.name == c.name)
-      }.filterNot { c =>
-        table.generatedColumns.exists(_.name == c.name)
-      }
       val factory = {
         if (config.returnCollectionType == ReturnCollectionType.Factory)
           s", $C: Factory[Int, $C[Int]]"
         else
           ""
       }
+//  def ->[A](value: A)(implicit ev: ParameterBinderFactory[A]): (SQLSyntax, ParameterBinder) = (this, ev(value))
 
       // def batchInsert=(
       1.indent + s"def batchInsert${typeParam}(entities: collection.Seq[" + className + "])(implicit session: DBSession" + defaultAutoSession + factory + s"): $returnType[Int] = {" + eol +
+        2.indent + "def toParameterBinder[A](value: A)(implicit ev: ParameterBinderFactory[A]): ParameterBinder = ev(value)" + eol +
         2.indent + "val params: collection.Seq[Seq[(String, Any)]] = entities.map(entity =>" + eol +
         3.indent + "Seq(" + eol +
-        batchInsertColumns.map(c => 4.indent + "\"" + c.nameInScala.replace("`", "") + "\" -> entity." + c.nameInScala).mkString(comma + eol) +
+        insertColumns.map(c => 4.indent + "\"" + c.nameInScala.replace("`", "") + "\" -> toParameterBinder(entity." + c.nameInScala + ")").mkString(comma + eol) +
         "))" + eol +
         2.indent + "SQL(\"\"\"insert into " + table.name + "(" + eol +
-        batchInsertColumns.map(c => 3.indent + c.name.replace("`", "")).mkString(comma + eol) + eol +
+        insertColumns.map(c => 3.indent + c.name.replace("`", "")).mkString(comma + eol) + eol +
         2.indent + ")" + " values (" + eol +
-        batchInsertColumns.map(c => 3.indent + "{" + c.nameInScala.replace("`", "") + "}").mkString(comma + eol) + eol +
+        insertColumns.map(c => 3.indent + "{" + c.nameInScala.replace("`", "") + "}").mkString(comma + eol) + eol +
         2.indent + ")\"\"\").batchByName(params.toSeq: _*).apply[" + returnType + "]()" + eol +
         1.indent + "}" + eol
     }
