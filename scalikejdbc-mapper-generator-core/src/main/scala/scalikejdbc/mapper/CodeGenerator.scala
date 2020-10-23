@@ -57,7 +57,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
 
     lazy val rawTypeInScala: String = {
       val Column(name, typ, typeName, size, notNull, autoIncrement, generated) = underlying
-      println(s"name=$name, type=$typ, typeName=$typeName, size=$size, notNull=$notNull, autoIncrement=$autoIncrement, generated=$generated")
+//      println(s"name=$name, type=$typ, typeName=$typeName, size=$size, notNull=$notNull, autoIncrement=$autoIncrement, generated=$generated")
       config.columnNameToFieldType.lift((className, nameInScala)).getOrElse {
         config.columnTypeToFieldType.lift(underlying.dataTypeName).getOrElse {
           JDBCType.valueOf(underlying.dataType) match {
@@ -339,7 +339,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
         }.getOrElse("")
         else
           "") +
-        allColumns.map { c => 3.indent + c.nameInScala + " = " + c.nameInScala }.mkString(comma + eol) + ")" + eol +
+        allColumns.filterNot(table.autoIncrementColumns.headOption.contains).map { c => 3.indent + c.nameInScala + " = " + c.nameInScala }.mkString(comma + eol) + ")" + eol +
         1.indent + "}" + eol
     }
 
@@ -622,7 +622,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
         else
           ""
       }
-//  def ->[A](value: A)(implicit ev: ParameterBinderFactory[A]): (SQLSyntax, ParameterBinder) = (this, ev(value))
+      //  def ->[A](value: A)(implicit ev: ParameterBinderFactory[A]): (SQLSyntax, ParameterBinder) = (this, ev(value))
 
       // def batchInsert=(
       1.indent + s"def batchInsert${typeParam}(entities: collection.Seq[" + className + "])(implicit session: DBSession" + defaultAutoSession + factory + s"): $returnType[Int] = {" + eol +
@@ -793,7 +793,6 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
              |import org.scalatest.matchers.should.Matchers
              |import scalikejdbc.scalatest.AutoRollback
              |import scalikejdbc._
-             |$timeImport
              |%additionalImport%
              |
              |%modifier%class %specClassName% extends FixtureAnyFlatSpec with Matchers with AutoRollback %baseTypes% {
@@ -1041,13 +1040,14 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
   // -----------------------
   // Arbitrary
   // -----------------------
+  private[this] val arbitraryTraitName = className + "Arbitrary"
 
   private[this] def outputArbitraryFile =
-    new File(config.testDir + "/" + packageName.replace(".", "/") + "/" + className + "Arbitrary.scala")
+    new File(config.testDir + "/" + packageName.replace(".", "/") + "/" + arbitraryTraitName + ".scala")
 
   def writeArbitraryIfNotExist(code: Option[String]): Unit = {
     if (outputArbitraryFile.exists) {
-      println("\"" + packageName + "." + className + "Arbitrary\"" + " already exists.")
+      println(s""""$packageName.$arbitraryTraitName" already exists.""")
     } else {
       writeSpec(code)
     }
@@ -1061,7 +1061,7 @@ class CodeGenerator(table: Table, specifiedClassName: Option[String] = None)(imp
           using(new OutputStreamWriter(fos)) {
             writer =>
               writer.write(code)
-              println("\"" + packageName + "." + className + "Arbitrary\"" + " created.")
+              println(s""""$packageName.$arbitraryTraitName" created.""")
           }
       }
     }
